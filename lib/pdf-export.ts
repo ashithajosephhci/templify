@@ -272,7 +272,8 @@ export async function exportToPdf({
   const filename = `${config.name}_${title.replace(/\s+/g, "_")}_${new Date()
     .toISOString()
     .split("T")[0]}.pdf`
-  saveAs(new Blob([pdfBytes], { type: "application/pdf" }), filename)
+  const pdfArray = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes)
+  saveAs(new Blob([pdfArray.slice().buffer], { type: "application/pdf" }), filename)
 }
 
 interface StyledLine {

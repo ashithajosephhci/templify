@@ -1,12 +1,34 @@
 import React from "react"
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono, Karla } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import './globals.css'
+import type { Metadata } from "next"
+import localFont from "next/font/local"
+import { Analytics } from "@vercel/analytics/next"
+import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
-const _karla = Karla({ subsets: ["latin"], variable: "--font-karla" });
+const geist = localFont({
+  src: [
+    { path: "../public/fonts/gyByhwUxId8gMEwYGFWfOw.woff2", weight: "100 900", style: "normal" },
+    { path: "../public/fonts/gyByhwUxId8gMEwSGFWfOw.woff2", weight: "100 900", style: "normal" },
+    { path: "../public/fonts/gyByhwUxId8gMEwcGFU.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist",
+})
+
+const geistMono = localFont({
+  src: [
+    { path: "../public/fonts/or3nQ6H-1_WfwkMZI_qYFrMdmgPn.woff2", weight: "100 900", style: "normal" },
+    { path: "../public/fonts/or3nQ6H-1_WfwkMZI_qYFrkdmgPn.woff2", weight: "100 900", style: "normal" },
+    { path: "../public/fonts/or3nQ6H-1_WfwkMZI_qYFrcdmg.woff2", weight: "100 900", style: "normal" },
+  ],
+  variable: "--font-geist-mono",
+})
+
+const karla = localFont({
+  src: [
+    { path: "../public/fonts/qkBbXvYC6trAT7RbLtyG5Q.woff2", weight: "200 800", style: "normal" },
+    { path: "../public/fonts/qkBbXvYC6trAT7RVLtw.woff2", weight: "200 800", style: "normal" },
+  ],
+  variable: "--font-karla",
+})
 
 export const metadata: Metadata = {
   title: 'Templify | IHM & IHNA Document Templates',
@@ -38,7 +60,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans antialiased`}>
+      <body className={`${geist.variable} ${geistMono.variable} ${karla.variable} font-sans antialiased`}>
         {children}
         <Analytics />
       </body>
