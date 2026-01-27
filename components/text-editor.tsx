@@ -110,7 +110,12 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
           labels: labels ?? undefined,
         })
         if (!isActive) return
-        const blobUrl = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }))
+        const blob = new Blob(
+  [pdfBytes.buffer.slice(0)],
+  { type: "application/pdf" }
+)
+
+const blobUrl = URL.createObjectURL(blob)
         setPreviewUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev)
           return blobUrl
