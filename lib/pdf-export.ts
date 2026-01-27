@@ -209,13 +209,15 @@ export async function buildPdfBytes({
       layout.headerTitle,
       "right"
     )
+    const headerSubtitleFontSize =
+      template.company === "IHM" ? 12 : layout.headerSubtitle.fontSize
     if (subtitle) {
       drawAlignedLineInBox(
         page,
         {
           text: subtitle,
           font: bodyFont,
-          fontSize: layout.headerSubtitle.fontSize,
+          fontSize: headerSubtitleFontSize,
           color: subtitleColor,
         },
         layout.headerSubtitle,

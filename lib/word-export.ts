@@ -314,6 +314,10 @@ export async function exportToWord({ template, title, subtitle, content }: Expor
   // Build content paragraphs
   const contentParagraphs: Paragraph[] = []
 
+  const titleColor = template.company === "IHNA" ? "009690" : config.primaryColor.replace("#", "")
+  const subtitleColor =
+    template.company === "IHNA" ? "009690" : config.secondaryColor.replace("#", "")
+
   // Title
   contentParagraphs.push(
     new Paragraph({
@@ -323,6 +327,7 @@ export async function exportToWord({ template, title, subtitle, content }: Expor
           text: title,
           bold: true,
           size: 36,
+          color: titleColor,
           font: "Arial",
         }),
       ],
@@ -338,7 +343,7 @@ export async function exportToWord({ template, title, subtitle, content }: Expor
           new TextRun({
             text: subtitle,
             size: 24,
-            color: "666666",
+            color: subtitleColor,
             font: "Arial",
           }),
         ],

@@ -30,7 +30,9 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [isExportingDoc, setIsExportingDoc] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [layout, setLayout] = useState<PdfLayout>(() => getDefaultLayout(template.type))
+  const [layout, setLayout] = useState<PdfLayout>(() =>
+    getDefaultLayout(template.type, template.company)
+  )
   const [showLayoutEditor, setShowLayoutEditor] = useState(false)
   const [prompt, setPrompt] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -50,7 +52,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Partial<PdfLayout>
-        const defaults = getDefaultLayout(template.type)
+        const defaults = getDefaultLayout(template.type, template.company)
         setLayout({
           ...defaults,
           ...parsed,
@@ -71,7 +73,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
         // Fall through to defaults.
       }
     }
-    setLayout(getDefaultLayout(template.type))
+    setLayout(getDefaultLayout(template.type, template.company))
     setHasUnsavedLayout(false)
   }, [storageKey, template.type])
 
@@ -257,7 +259,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   }
 
   const resetLayout = () => {
-    setLayout(getDefaultLayout(template.type))
+    setLayout(getDefaultLayout(template.type, template.company))
     setHasUnsavedLayout(true)
   }
 
@@ -548,7 +550,10 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   )
 }
 
-function getDefaultLayout(type: Template["type"]): PdfLayout {
+function getDefaultLayout(type: Template["type"], company: Template["company"]): PdfLayout {
+  const config = companyConfigs[company]
+  const titleColor = company === "IHNA" ? "#009690" : config.primaryColor
+  const subtitleColor = company === "IHNA" ? "#009690" : config.secondaryColor
   if (type === "landscape") {
     return {
       title: { x: 38, y: 380, width: 648, height: 48, fontSize: 36, lineHeight: 40 },
@@ -557,8 +562,8 @@ function getDefaultLayout(type: Template["type"]): PdfLayout {
       headerSubtitle: { x: 520, y: 62, width: 200, height: 16, fontSize: 10, lineHeight: 12 },
       pageNumber: { x: 0, y: 560, width: 792, height: 16, fontSize: 10, lineHeight: 12 },
       body: { x: 72, y: 120, width: 648, height: 440, fontSize: 11, lineHeight: 16 },
-      titleStyle: { fontName: "Helvetica", color: "#F04D23" },
-      subtitleStyle: { fontName: "Helvetica", color: "#414042" },
+      titleStyle: { fontName: "Helvetica", color: titleColor },
+      subtitleStyle: { fontName: "Helvetica", color: subtitleColor },
       bodyStyle: { fontName: "Helvetica", color: "#111827" },
       bodyAlign: "left",
     }
@@ -571,8 +576,8 @@ function getDefaultLayout(type: Template["type"]): PdfLayout {
     headerSubtitle: { x: 360, y: 64, width: 200, height: 16, fontSize: 10, lineHeight: 12 },
     pageNumber: { x: 0, y: 760, width: 612, height: 16, fontSize: 10, lineHeight: 12 },
     body: { x: 72, y: 100, width: 468, height: 600, fontSize: 11, lineHeight: 16 },
-    titleStyle: { fontName: "Helvetica", color: "#F04D23" },
-    subtitleStyle: { fontName: "Helvetica", color: "#414042" },
+    titleStyle: { fontName: "Helvetica", color: titleColor },
+    subtitleStyle: { fontName: "Helvetica", color: subtitleColor },
     bodyStyle: { fontName: "Helvetica", color: "#111827" },
     bodyAlign: "left",
   }
