@@ -105,90 +105,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           type="button"
           size="sm"
           variant="secondary"
-          onClick={() => editor?.chain().focus().toggleBold().run()}
-        >
-          Bold
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().toggleItalic().run()}
-        >
-          Italic
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().toggleUnderline().run()}
-          disabled={!editor?.can().toggleUnderline?.()}
-        >
-          Underline
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().setTextAlign("left").run()}
-        >
-          Align Left
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().setTextAlign("center").run()}
-        >
-          Align Center
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().setTextAlign("right").run()}
-        >
-          Align Right
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-        >
-          Insert Table
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().addColumnAfter().run()}
-        >
-          Add Column
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().addRowAfter().run()}
-        >
-          Add Row
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => editor?.chain().focus().deleteTable().run()}
-        >
-          Delete Table
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
           onClick={() => fileInputRef.current?.click()}
         >
-          Insert Image
+          Upload Image
         </Button>
         <input
           ref={fileInputRef}
