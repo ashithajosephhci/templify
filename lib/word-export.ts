@@ -303,10 +303,18 @@ function replaceParagraphContainingPlaceholder(
 async function tiptapToOpenXmlBlocks(doc: TiptapDoc, ctx: RichContext) {
   const blocks: string[] = []
   const headingNumbers = [0, 0, 0, 0, 0, 0]
+  let orderedCounter = 1
+  let inOrderedList = false
   for (const node of doc.content ?? []) {
     if (node.type === "paragraph") {
       const headingMatch = detectNumberedHeading(node)
       const inferredHeadingLevel = headingMatch?.level ?? null
+      const plain = getNodeText(node).trim()
+      if (!plain && !inferredHeadingLevel) {
+        continue
+      }
+      inOrderedList = false
+      orderedCounter = 1
       blocks.push(
         buildParagraphXml(node, {
           alignment: ctx.alignmentDefaults.paragraph,
@@ -324,6 +332,8 @@ async function tiptapToOpenXmlBlocks(doc: TiptapDoc, ctx: RichContext) {
 
     if (node.type === "heading") {
       const level = Number(node.attrs?.level ?? 1)
+      inOrderedList = false
+      orderedCounter = 1
       blocks.push(
         buildParagraphXml(node, {
           alignment: ctx.alignmentDefaults.heading,
@@ -342,9 +352,14 @@ async function tiptapToOpenXmlBlocks(doc: TiptapDoc, ctx: RichContext) {
         if (item.type !== "listItem") continue
         const paragraphs = extractParagraphs(item)
         for (const paragraph of paragraphs) {
+          const plain = getNodeText(paragraph).trim()
+          if (!plain) continue
           blocks.push(
             buildListParagraphXml(paragraph, {
-              alignment: ctx.alignmentDefaults.bullet,
+              alignment:
+                ctx.alignmentDefaults.bullet === "justify"
+                  ? "left"
+                  : ctx.alignmentDefaults.bullet,
               marker: "• ",
               runStyle: ctx.contentStyle,
             })
@@ -355,26 +370,36 @@ async function tiptapToOpenXmlBlocks(doc: TiptapDoc, ctx: RichContext) {
     }
 
     if (node.type === "orderedList") {
-      let orderedIndex = 1
+      if (!inOrderedList) {
+        orderedCounter = 1
+        inOrderedList = true
+      }
       const items = node.content ?? []
       for (const item of items) {
         if (item.type !== "listItem") continue
         const paragraphs = extractParagraphs(item)
         for (const paragraph of paragraphs) {
+          const plain = getNodeText(paragraph).trim()
+          if (!plain) continue
           blocks.push(
             buildListParagraphXml(paragraph, {
-              alignment: ctx.alignmentDefaults.ordered,
-              marker: `${orderedIndex}. `,
+              alignment:
+                ctx.alignmentDefaults.ordered === "justify"
+                  ? "left"
+                  : ctx.alignmentDefaults.ordered,
+              marker: `${orderedCounter}. `,
               runStyle: ctx.contentStyle,
             })
           )
-          orderedIndex += 1
+          orderedCounter += 1
         }
       }
       continue
     }
 
     if (node.type === "image") {
+      inOrderedList = false
+      orderedCounter = 1
       const src = String(node.attrs?.src ?? "")
       if (!src) continue
       const imageXml = await buildImageBlock(src, ctx)
@@ -387,6 +412,8 @@ async function tiptapToOpenXmlBlocks(doc: TiptapDoc, ctx: RichContext) {
     }
 
     if (node.type === "table") {
+      inOrderedList = false
+      orderedCounter = 1
       const tableXml = buildTableXml(node, ctx)
       if (tableXml) {
         blocks.push(tableXml)
@@ -494,7 +521,7 @@ function buildRunsFromInline(
         fontSize: runStyle?.fontSize,
         color: runStyle?.color,
       }
-      runs.push(textRunXml(String(child.text ?? ""), runMarks))
+      runs.push(textRunXml(normalizeExportText(String(child.text ?? "")), runMarks))
       continue
     }
 
@@ -518,6 +545,17 @@ type NumberedHeadingMatch = {
 function detectNumberedHeading(node: any): NumberedHeadingMatch | null {
   const text = getNodeText(node).trim()
   if (!text) return null
+  const sectionMatch = /^section\s+(\d+(?:\.\d+)*)(?:\.)?\s+(.+)$/i.exec(text)
+  if (sectionMatch) {
+    const headingTitle = sectionMatch[2].trim()
+    if (!headingTitle) return null
+    if (/[.!?]$/.test(headingTitle)) return null
+    if (/[.!?]\s/.test(headingTitle)) return null
+    const wordCount = headingTitle.split(/\s+/).length
+    if (headingTitle.length > 160 || wordCount > 20) return null
+    const depth = sectionMatch[1].split(".").length
+    return { level: Math.min(6, Math.max(1, depth)), title: headingTitle }
+  }
   const match = /^(\d+(?:\.\d+)*)(?:\.)?\s+(.+)$/.exec(text)
   if (!match) return null
   const headingTitle = match[2].trim()
@@ -570,6 +608,10 @@ function textRunXml(
   const escaped = xmlEscape(text)
   const spaceAttr = marks.preserveSpace || /^\s|\s$/.test(text) ? " xml:space=\"preserve\"" : ""
   return `<w:r>${rPr}<w:t${spaceAttr}>${escaped}</w:t></w:r>`
+}
+
+function normalizeExportText(value: string) {
+  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trimEnd()
 }
 
 function buildRunProperties(marks: {

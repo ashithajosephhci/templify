@@ -437,6 +437,7 @@ type PdfParagraph = {
   runs: PdfRun[]
   align: "left" | "center" | "right" | "justify"
   isHeading?: boolean
+  rawText?: string
 }
 
 type PdfImage = {
@@ -514,9 +515,17 @@ function tiptapToPdfBlocks(
   defaultAlign: PdfParagraph["align"]
 ): PdfBlock[] {
   const blocks: PdfBlock[] = []
+  let orderedCounter = 1
+  let inOrderedList = false
   for (const node of doc.content ?? []) {
     if (node.type === "paragraph" || node.type === "heading") {
       const paragraph = tiptapParagraphToPdf(node, defaultAlign)
+      const trimmed = (paragraph.rawText ?? "").trim()
+      if (!trimmed) {
+        continue
+      }
+      inOrderedList = false
+      orderedCounter = 1
       if (paragraph.runs.length === 0) {
         blocks.push({
           type: "paragraph",
@@ -547,6 +556,8 @@ function tiptapToPdfBlocks(
         const paragraphs = extractListParagraphs(item)
         for (const paragraph of paragraphs) {
           const base = tiptapParagraphToPdf(paragraph, defaultAlign)
+          const trimmed = (base.rawText ?? "").trim()
+          if (!trimmed) continue
           blocks.push({
             type: "paragraph",
             runs: [{ text: "• " }, ...base.runs],
@@ -558,25 +569,32 @@ function tiptapToPdfBlocks(
     }
 
     if (node.type === "orderedList") {
-      let index = 1
+      if (!inOrderedList) {
+        orderedCounter = 1
+        inOrderedList = true
+      }
       const items = node.content ?? []
       for (const item of items) {
         if (item.type !== "listItem") continue
         const paragraphs = extractListParagraphs(item)
         for (const paragraph of paragraphs) {
           const base = tiptapParagraphToPdf(paragraph, defaultAlign)
+          const trimmed = (base.rawText ?? "").trim()
+          if (!trimmed) continue
           blocks.push({
             type: "paragraph",
-            runs: [{ text: `${index}. ` }, ...base.runs],
+            runs: [{ text: `${orderedCounter}. ` }, ...base.runs],
             align: base.align,
           })
-          index += 1
+          orderedCounter += 1
         }
       }
       continue
     }
 
     if (node.type === "image") {
+      inOrderedList = false
+      orderedCounter = 1
       const src = String(node.attrs?.src ?? "")
       if (src) {
         blocks.push({ type: "image", src })
@@ -585,6 +603,8 @@ function tiptapToPdfBlocks(
     }
 
     if (node.type === "table") {
+      inOrderedList = false
+      orderedCounter = 1
       const rows: PdfTableRow[] = []
       for (const row of node.content ?? []) {
         const cells: PdfTableCell[] = []
@@ -641,13 +661,14 @@ function tiptapParagraphToPdf(node: any, defaultAlign: PdfParagraph["align"]): P
       underline: marks.some((mark: any) => mark.type === "underline"),
     }
     runs.push({
-      text: child.text ?? "",
+      text: normalizeExportText(child.text ?? ""),
       ...styles,
     })
   }
 
   const align = (node.attrs?.textAlign as PdfParagraph["align"]) ?? defaultAlign
-  return { type: "paragraph", runs, align }
+  const text = runs.map((run) => run.text).join("")
+  return { type: "paragraph", runs, align, rawText: text }
 }
 
 async function createContentPage(ctx: PdfRenderContext, pages: any[]) {
@@ -735,7 +756,11 @@ function drawParagraphBlock(page: any, block: PdfParagraph, cursorY: number, ctx
     )
     y += lineHeight
   }
-  return y + lineHeight * 0.25
+  if (block.isHeading) {
+    return y + lineHeight * 0.25
+  }
+  const trimmed = (block.rawText ?? "").trim()
+  return trimmed ? y + lineHeight * 0.1 : y
 }
 
 async function drawImageBlock(page: any, block: PdfImage, cursorY: number, ctx: PdfRenderContext) {
@@ -932,24 +957,34 @@ function drawLineSegments(
     const font = pickFont(segment, ctx, useHeadingFonts)
     return sum + font.widthOfTextAtSize(segment.text, safeFontSize)
   }, 0)
+  const wordCount = segments.reduce((count, segment) => {
+    if (/^\s+$/.test(segment.text)) return count
+    return count + segment.text.split(/\s+/).filter(Boolean).length
+  }, 0)
+  const startsWithBullet = segments[0]?.text?.trim().startsWith("•") ?? false
+  const startsWithNumber = /^\d+\.\s/.test(segments[0]?.text ?? "")
   let x = box.x
   if (segments.length && align === "center") {
     x = box.x + (box.width - lineWidth) / 2
   } else if (segments.length && align === "right") {
     x = box.x + box.width - lineWidth
   }
+  const spaceCount = segments.reduce((count, segment) => {
+    if (!/^\s+$/.test(segment.text)) return count
+    return count + segment.text.length
+  }, 0)
+  const fillRatio = box.width > 0 ? lineWidth / box.width : 1
   const canJustify =
     align === "justify" &&
     !isLastLine &&
-    segments.some((segment) => /^\s+$/.test(segment.text))
+    spaceCount >= 2 &&
+    fillRatio > 0.85 &&
+    wordCount >= 6 &&
+    !startsWithBullet &&
+    !startsWithNumber
   const extraSpace = canJustify ? Math.max(0, box.width - lineWidth) : 0
-  const spaceCount = canJustify
-    ? segments.reduce((count, segment) => {
-        if (!/^\s+$/.test(segment.text)) return count
-        return count + segment.text.length
-      }, 0)
-    : 0
-  const extraPerSpace = spaceCount > 0 ? extraSpace / spaceCount : 0
+  const rawExtraPerSpace = spaceCount > 0 ? extraSpace / spaceCount : 0
+  const extraPerSpace = Math.min(rawExtraPerSpace, safeFontSize * 0.2)
 
   const y = page.getHeight() - cursorY - safeFontSize
   for (const segment of segments) {
@@ -975,6 +1010,10 @@ function drawLineSegments(
       x += extraPerSpace * segment.text.length
     }
   }
+}
+
+function normalizeExportText(value: string) {
+  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trimEnd()
 }
 
 function pickFont(run: PdfRun, ctx: PdfRenderContext, useHeadingFonts = false) {

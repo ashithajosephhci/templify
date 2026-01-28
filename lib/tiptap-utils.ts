@@ -21,14 +21,41 @@ export type NumberedHeading = {
   isHeading: boolean
 }
 
-const numberedHeadingPattern = /^(\d+(?:\.\d+)*)(?:\.)?\s+(.*)$/
+const numberedHeadingPattern = /^(\d+(?:\.\d+)*)(?:\.)?\s+(.+)$/
+const sectionHeadingPattern = /^section\s+(\d+(?:\.\d+)*)(?:\.)?\s+(.+)$/i
+const numberedListPattern = /^\d+[.)]\s+/
 
 export function createNumberingNormalizer() {
   let currentNumbers: number[] = []
   return (text: string): NumberedHeading => {
     const trimmed = text.trim()
+    const sectionMatch = sectionHeadingPattern.exec(trimmed)
+    if (sectionMatch) {
+      const level = sectionMatch[1].split(".").length
+      if (level === 1) {
+        const next = (currentNumbers[0] ?? 0) + 1
+        currentNumbers = [next]
+      } else {
+        while (currentNumbers.length < level - 1) {
+          currentNumbers.push(1)
+        }
+        if (currentNumbers.length === level) {
+          currentNumbers[level - 1] += 1
+        } else {
+          currentNumbers[level - 1] = 1
+        }
+        currentNumbers = currentNumbers.slice(0, level)
+      }
+
+      return { text: `${currentNumbers.join(".")} ${sectionMatch[2]}`, isHeading: true }
+    }
+
     const match = numberedHeadingPattern.exec(trimmed)
     if (!match) {
+      return { text, isHeading: false }
+    }
+
+    if (numberedListPattern.test(trimmed)) {
       return { text, isHeading: false }
     }
 
