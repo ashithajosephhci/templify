@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useState } from "react"
 import { type Template, companyConfigs } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, ArrowLeft, FileText, FileDown } from "lucide-react"
 import { buildPdfBytes, exportToPdf, type PdfLayout, type TextBoxLayout } from "@/lib/pdf-export"
 import { exportToWord } from "@/lib/word-export"
+import { RichTextEditor } from "@/components/rich-text-editor"
+import {
+  type TiptapDoc,
+  extractParagraphTexts,
+  isDocEmpty,
+} from "@/lib/tiptap-utils"
 
 interface TextEditorProps {
   template: Template
@@ -26,7 +31,10 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     | "pageNumber"
   const [documentTitle, setDocumentTitle] = useState("")
   const [documentSubtitle, setDocumentSubtitle] = useState("")
-  const [content, setContent] = useState("")
+  const [content, setContent] = useState<TiptapDoc>(() => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [] }],
+  }))
   const [isExporting, setIsExporting] = useState(false)
   const [isExportingDoc, setIsExportingDoc] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -34,8 +42,6 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     getDefaultLayout(template.type, template.company)
   )
   const [showLayoutEditor, setShowLayoutEditor] = useState(false)
-  const [prompt, setPrompt] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const config = companyConfigs[template.company]
@@ -45,6 +51,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     [template.type]
   )
   const [hasUnsavedLayout, setHasUnsavedLayout] = useState(false)
+  const fontOptions = ["Helvetica", "Times-Roman", "Courier", "Calibri"] as const
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -64,7 +71,11 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
           pageNumber: { ...defaults.pageNumber, ...parsed.pageNumber },
           titleStyle: { ...defaults.titleStyle, ...parsed.titleStyle },
           subtitleStyle: { ...defaults.subtitleStyle, ...parsed.subtitleStyle },
+          headerTitleStyle: { ...defaults.headerTitleStyle, ...parsed.headerTitleStyle },
+          headerSubtitleStyle: { ...defaults.headerSubtitleStyle, ...parsed.headerSubtitleStyle },
           bodyStyle: { ...defaults.bodyStyle, ...parsed.bodyStyle },
+          headingStyle: { ...defaults.headingStyle, ...parsed.headingStyle },
+          headingFontSize: parsed.headingFontSize ?? defaults.headingFontSize,
           bodyAlign: parsed.bodyAlign ?? defaults.bodyAlign,
         })
         setHasUnsavedLayout(false)
@@ -94,7 +105,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     let timeoutId: number | null = null
 
     const updatePreview = async () => {
-      if (!content.trim() && !documentTitle.trim() && !documentSubtitle.trim()) {
+      if (isDocEmpty(content) && !documentTitle.trim() && !documentSubtitle.trim()) {
         if (isActive) {
           setPreviewUrl(null)
         }
@@ -107,7 +118,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
           template,
           title: documentTitle || "Document",
           subtitle: documentSubtitle,
-          content: content || "",
+          content,
           layout,
           labels: labels ?? undefined,
         })
@@ -142,11 +153,11 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
 
 
   const fetchHeadingLabels = async () => {
-    if (!content.trim()) return null
+    if (isDocEmpty(content)) return null
     const response = await fetch("/api/heading-classify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines: content.split("\n") }),
+      body: JSON.stringify({ lines: extractParagraphTexts(content) }),
     })
     if (!response.ok) return null
     const data = (await response.json()) as {
@@ -156,7 +167,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   }
 
   const handleExport = async () => {
-    if (!content.trim()) return
+    if (isDocEmpty(content)) return
 
     setIsExporting(true)
     setExportError(null)
@@ -179,7 +190,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   }
 
   const handleExportDoc = async () => {
-    if (!content.trim()) return
+    if (isDocEmpty(content)) return
     setIsExportingDoc(true)
     setExportError(null)
     try {
@@ -188,6 +199,8 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
         title: documentTitle || "Document",
         subtitle: documentSubtitle,
         content,
+        alignment: layout.bodyAlign,
+        layout,
       })
     } catch (error) {
       console.error("DOCX export failed:", error)
@@ -197,34 +210,6 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
     }
   }
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return
-    setIsGenerating(true)
-    setExportError(null)
-    try {
-      const response = await fetch("/api/generate-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          title: documentTitle,
-          subtitle: documentSubtitle,
-        }),
-      })
-      if (!response.ok) {
-        throw new Error("Generation failed")
-      }
-      const data = (await response.json()) as { content?: string }
-      if (data.content) {
-        setContent(data.content)
-      }
-    } catch (error) {
-      console.error("Generation failed:", error)
-      setExportError("AI generation failed.")
-    } finally {
-      setIsGenerating(false)
-    }
-  }
 
   const handleLayoutChange = (
     section: LayoutSection,
@@ -244,7 +229,13 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
   }
 
   const handleStyleChange = (
-    section: "titleStyle" | "subtitleStyle" | "bodyStyle",
+    section:
+      | "titleStyle"
+      | "subtitleStyle"
+      | "bodyStyle"
+      | "headerTitleStyle"
+      | "headerSubtitleStyle"
+      | "headingStyle",
     field: "fontName" | "color",
     value: string
   ) => {
@@ -255,6 +246,13 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
         [field]: value,
       },
     }))
+    setHasUnsavedLayout(true)
+  }
+
+  const handleHeadingFontSizeChange = (value: string) => {
+    const numeric = Number.parseFloat(value)
+    if (Number.isNaN(numeric)) return
+    setLayout((prev) => ({ ...prev, headingFontSize: numeric }))
     setHasUnsavedLayout(true)
   }
 
@@ -329,40 +327,15 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="content">Content</Label>
-                <Textarea
-                  id="content"
-                  placeholder="Paste or type your content here..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="min-h-[360px] resize-none font-mono text-base"
-                />
+                <RichTextEditor value={content} onChange={setContent} />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="prompt">AI prompt (optional)</Label>
-                <Textarea
-                  id="prompt"
-                  placeholder="Describe the report you want the AI to generate..."
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  className="min-h-[160px] resize-none text-base"
-                />
-              </div>
-              <Button
-                type="button"
-                onClick={handleGenerate}
-                disabled={!prompt.trim() || isGenerating}
-                className="w-full"
-                variant="secondary"
-              >
-                {isGenerating ? "Generating..." : "Generate Content with AI"}
-              </Button>
             </div>
           </div>
 
           <Button
             onClick={handleExport}
-            disabled={!content.trim() || isExporting}
+            disabled={isDocEmpty(content) || isExporting}
             className="w-full"
             style={{
               background: `linear-gradient(135deg, ${config.primaryColor} 0%, ${config.secondaryColor} 100%)`,
@@ -373,7 +346,7 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
           </Button>
           <Button
             onClick={handleExportDoc}
-            disabled={!content.trim() || isExportingDoc}
+            disabled={isDocEmpty(content) || isExportingDoc}
             className="w-full"
             variant="secondary"
           >
@@ -457,6 +430,22 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
                         }
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Title font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.titleStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("titleStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <Label className="text-xs">Subtitle color</Label>
@@ -468,9 +457,25 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
                         }
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Subtitle font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.subtitleStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("subtitleStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <Label className="text-xs">Body color</Label>
+                      <Label className="text-xs">Content color</Label>
                       <Input
                         type="color"
                         value={layout.bodyStyle.color}
@@ -478,6 +483,112 @@ export function TextEditor({ template, onBack, onReset }: TextEditorProps) {
                           handleStyleChange("bodyStyle", "color", e.target.value)
                         }
                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Content font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.bodyStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("bodyStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Heading color</Label>
+                      <Input
+                        type="color"
+                        value={layout.headingStyle.color}
+                        onChange={(e) =>
+                          handleStyleChange("headingStyle", "color", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Heading font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.headingStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("headingStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Heading font size</Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        value={layout.headingFontSize}
+                        onChange={(e) => handleHeadingFontSizeChange(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Header title color</Label>
+                      <Input
+                        type="color"
+                        value={layout.headerTitleStyle.color}
+                        onChange={(e) =>
+                          handleStyleChange("headerTitleStyle", "color", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Header title font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.headerTitleStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("headerTitleStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Header subtitle color</Label>
+                      <Input
+                        type="color"
+                        value={layout.headerSubtitleStyle.color}
+                        onChange={(e) =>
+                          handleStyleChange("headerSubtitleStyle", "color", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Label className="text-xs">Header subtitle font</Label>
+                      <select
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        value={layout.headerSubtitleStyle.fontName}
+                        onChange={(e) =>
+                          handleStyleChange("headerSubtitleStyle", "fontName", e.target.value)
+                        }
+                      >
+                        {fontOptions.map((font) => (
+                          <option key={font} value={font}>
+                            {font}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -564,7 +675,11 @@ function getDefaultLayout(type: Template["type"], company: Template["company"]):
       body: { x: 72, y: 120, width: 648, height: 440, fontSize: 11, lineHeight: 16 },
       titleStyle: { fontName: "Helvetica", color: titleColor },
       subtitleStyle: { fontName: "Helvetica", color: subtitleColor },
+      headerTitleStyle: { fontName: "Helvetica", color: "#111827" },
+      headerSubtitleStyle: { fontName: "Helvetica", color: subtitleColor },
       bodyStyle: { fontName: "Helvetica", color: "#111827" },
+      headingStyle: { fontName: "Helvetica", color: titleColor },
+      headingFontSize: 13,
       bodyAlign: "left",
     }
   }
@@ -578,7 +693,11 @@ function getDefaultLayout(type: Template["type"], company: Template["company"]):
     body: { x: 72, y: 100, width: 468, height: 600, fontSize: 11, lineHeight: 16 },
     titleStyle: { fontName: "Helvetica", color: titleColor },
     subtitleStyle: { fontName: "Helvetica", color: subtitleColor },
+    headerTitleStyle: { fontName: "Helvetica", color: "#111827" },
+    headerSubtitleStyle: { fontName: "Helvetica", color: subtitleColor },
     bodyStyle: { fontName: "Helvetica", color: "#111827" },
+    headingStyle: { fontName: "Helvetica", color: titleColor },
+    headingFontSize: 13,
     bodyAlign: "left",
   }
 }

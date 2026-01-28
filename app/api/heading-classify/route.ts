@@ -1,11 +1,7 @@
-import OpenAI from "openai"
-
 type LineLabel = "heading" | "body" | "blank"
 const MAX_HEADING_CHARS = 60
 const MAX_HEADING_WORDS = 8
 const NUMBERED_HEADING = /^(\d+(\.\d+)*|[A-Z]|[IVXLC]+)[\).]?\s+/
-
-const MODEL = "gpt-4o-mini"
 
 function isHeadingCandidate(line: string, prevBlank: boolean) {
   const trimmed = line.trim()
@@ -66,48 +62,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "lines must be an array" }, { status: 400 })
     }
 
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return Response.json(
-        { error: "OPENAI_API_KEY is not configured", labels: localClassify(lines) },
-        { status: 200 }
-      )
-    }
-
-    const client = new OpenAI({ apiKey })
-    const prompt = [
-      "Classify each line as: heading, body, or blank.",
-      "Be STRICT: paragraphs must be labeled body.",
-      `Headings must be short (<= ${MAX_HEADING_CHARS} chars and <= ${MAX_HEADING_WORDS} words).`,
-      "Heading rules:",
-      "- Numbered headings only, like '1. Introduction' or '2.3 Scope'",
-      "If a line is long, has multiple sentences, or reads like a paragraph, label it body.",
-      "Return JSON only in this exact shape:",
-      '{"labels":["heading","body","blank",...]}',
-      "The labels array MUST match the input lines length exactly.",
-    ].join("\n")
-
-    const response = await client.responses.create({
-      model: MODEL,
-      input: [
-        { role: "system", content: prompt },
-        { role: "user", content: JSON.stringify({ lines }) },
-      ],
-    })
-
-    const text = response.output_text?.trim() ?? ""
-    let parsed: { labels?: LineLabel[] } | null = null
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      parsed = null
-    }
-
-    if (!parsed?.labels || parsed.labels.length !== lines.length) {
-      return Response.json({ labels: localClassify(lines), warning: "fallback" })
-    }
-
-    return Response.json({ labels: normalizeLabels(lines, parsed.labels) })
+    return Response.json({ labels: normalizeLabels(lines, localClassify(lines)) })
   } catch (error) {
     return Response.json({ labels: [], error: "classification_failed" }, { status: 500 })
   }
